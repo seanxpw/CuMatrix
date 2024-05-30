@@ -1,40 +1,37 @@
-# Compiler and compiler flags
+# Makefile for CUDA C++ Matrix Library
+
+# Compiler
 CXX := g++
 NVCC := nvcc
-CXXFLAGS := -std=c++20 -O2 -I ./eigen/Eigen
-NVCC_FLAGS := -O3 --std=c++20
-LD_FLAGS := -lcudart
+
+# Compiler flags
+CXXFLAGS := -std=c++17 -O2
+NVCCFLAGS := -std=c++17 -O2
 
 # Target executable
-TARGET := mat-add
+TARGET := matrix_example
 
 # Source files
-CPP_SRCS := test.cpp
-CUDA_SRCS := 
+SRCS := main.cpp
+CU_SRCS := matrix.cu
 
 # Object files
-CPP_OBJS := $(CPP_SRCS:.cpp=.o)
-CUDA_OBJS := $(CUDA_SRCS:.cu=.o)
-OBJS := $(CPP_OBJS) $(CUDA_OBJS)
+OBJS := $(SRCS:.cpp=.o)
+CU_OBJS := $(CU_SRCS:.cu=.o)
 
-# Default target
+# Rules
 all: $(TARGET)
 
-# Link the target executable
-$(TARGET): $(OBJS)
-	$(NVCC) -o $@ $^ $(LD_FLAGS)
+$(TARGET): $(OBJS) $(CU_OBJS)
+	$(NVCC) $(NVCCFLAGS) -o $@ $^
 
-# Compile C++ source files into object files
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Compile CUDA source files into object files
-# %.o: %.cu
-# 	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
+%.o: %.cu
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
-# Clean up build files
 clean:
-	rm -f $(TARGET) $(OBJS)
+	rm -f $(OBJS) $(CU_OBJS) $(TARGET)
 
-# Phony targets
 .PHONY: all clean
