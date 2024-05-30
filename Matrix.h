@@ -1,12 +1,33 @@
+#include<cstring>
+#include<vector>
 enum DataPlace { HOST, DEVICE };
 
 template <typename T>
 class Matrix {
+private:
+size_t tatalSize ;
+size_t d1_size;
+size_t d2_size;
+size_t d3_size;
 public:
+
     Matrix(size_t d1);
     Matrix(size_t d1, size_t d2);
     Matrix(size_t d1, size_t d2, size_t d3);
     ~Matrix();
+
+    //return string shape of the matrix
+    std::string shapeString();
+
+    // return a vector in d1,d2,d3
+    vector<size_t> shape();
+
+    size_t shapeD1();
+    size_t shapeD2();
+    size_t shapeD3();
+
+
+
 
     T& operator()(size_t i);
     T& operator()(size_t i, size_t j);

@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "*.h": "c",
-        "dense": "cpp"
+        "dense": "cpp",
+        "cstring": "cpp"
     }
 }
