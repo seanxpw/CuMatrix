@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/sean/CS147/finalproject-s24-aha/eigen/Eigen"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/local/cuda-12.2/bin/nvcc",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}
