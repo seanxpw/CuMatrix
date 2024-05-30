@@ -9,11 +9,11 @@ CXXFLAGS := -std=c++17 -O2
 NVCCFLAGS := -std=c++17 -O2
 
 # Target executable
-TARGET := matrix_example
+TARGET := a.out
 
 # Source files
-SRCS := main.cpp
-CU_SRCS := matrix.cu
+SRCS := 
+CU_SRCS := Matrix.cu
 
 # Object files
 OBJS := $(SRCS:.cpp=.o)
