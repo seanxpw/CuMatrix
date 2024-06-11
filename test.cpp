@@ -1,14 +1,13 @@
 #include <iostream>
 #include <Eigen/Dense>
- 
+#include <cstring>
 using Eigen::MatrixXd;
  
 int main()
 {
-  MatrixXd m(2000,2000);
-  m(0,0) = 3;
-  m(1,0) = 2.5;
-  m(0,1) = -1;
-  m(1,1) = m(1,0) + m(0,1);
-  std::cout << m << std::endl;
+int a[100];
+memset(a, 1, sizeof(a));
+for(int i =0;i< 100;i++){
+    printf("%d\n", a[i]);
+}
 }

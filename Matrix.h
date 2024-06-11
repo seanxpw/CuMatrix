@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <cstring>
 #include <stdexcept>
 
 #define TILE_SIZE 16
@@ -58,6 +59,8 @@ public:
 
     void transferToDevice();
     void transferToHost();
+
+    void matrixMemset( T value);
 
     // Overload addition operators with optional broadcasting axis
     Matrix<T> operator+(const T &num) const;
@@ -215,6 +218,23 @@ void Matrix<T>::transferToHost()
         data = hostData;
         dataPlace = HOST;
     }
+}
+
+template <typename T>
+void Matrix<T>::matrixMemset(T value)
+{
+    if(dataPlace == HOST)
+    {
+        // cannot use memset here
+        // https://codeforces.com/blog/entry/68747
+        std::fill(data, data + totalSize, value);
+    }
+    else
+    {
+        cudaMemset(data,value,totalSize);
+        cudaDeviceSynchronize();
+    }
+
 }
 
 // Shape Methods
@@ -408,6 +428,17 @@ __global__ void matAdd(int mat_sz, const T *A, const T b, T *C)
     {
         C[i] = b + A[i];
     }
+}
+
+// zeros and ones
+
+template <typename T>
+Matrix<T> zeros(size_t d1, bool isOnDevice = true)
+{
+    printf("in zeros\n");
+     Matrix<T> result = Matrix<T>(d1,isOnDevice);
+     result.matrixMemset(10);
+    return result;
 }
 
 #endif
