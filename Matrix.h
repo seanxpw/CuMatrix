@@ -7,6 +7,9 @@
 #include <cstring>
 #include <stdexcept>
 
+#include <thrust/fill.h>
+#include <thrust/device_vector.h>
+
 #define TILE_SIZE 16
 enum DataPlace
 {
@@ -60,7 +63,7 @@ public:
     void transferToDevice();
     void transferToHost();
 
-    void matrixMemset( T value);
+    void matrixMemset(T value);
 
     // Overload addition operators with optional broadcasting axis
     Matrix<T> operator+(const T &num) const;
@@ -223,7 +226,7 @@ void Matrix<T>::transferToHost()
 template <typename T>
 void Matrix<T>::matrixMemset(T value)
 {
-    if(dataPlace == HOST)
+    if (dataPlace == HOST)
     {
         // cannot use memset here
         // https://codeforces.com/blog/entry/68747
@@ -231,10 +234,10 @@ void Matrix<T>::matrixMemset(T value)
     }
     else
     {
-        cudaMemset(data,value,totalSize);
+        thrust::device_ptr<T> dev_ptr(data);
+        thrust::fill(dev_ptr, dev_ptr + totalSize, value);
         cudaDeviceSynchronize();
     }
-
 }
 
 // Shape Methods
@@ -436,8 +439,53 @@ template <typename T>
 Matrix<T> zeros(size_t d1, bool isOnDevice = true)
 {
     printf("in zeros\n");
-     Matrix<T> result = Matrix<T>(d1,isOnDevice);
-     result.matrixMemset(10);
+    Matrix<T> result = Matrix<T>(d1, isOnDevice);
+    result.matrixMemset(0);
+    return result;
+}
+
+template <typename T>
+Matrix<T> zeros(size_t d1, size_t d2,bool isOnDevice = true)
+{
+    printf("in zeros\n");
+    Matrix<T> result = Matrix<T>(d1,d2, isOnDevice);
+    result.matrixMemset(0);
+    return result;
+}
+
+template <typename T>
+Matrix<T> zeros(size_t d1, size_t d2,size_t d3,bool isOnDevice = true)
+{
+    printf("in zeros\n");
+    Matrix<T> result = Matrix<T>(d1,d2,d3, isOnDevice);
+    result.matrixMemset(0);
+    return result;
+}
+
+template <typename T>
+Matrix<T> ones(size_t d1, bool isOnDevice = true)
+{
+    printf("in ones\n");
+    Matrix<T> result = Matrix<T>(d1, isOnDevice);
+    result.matrixMemset(1);
+    return result;
+}
+
+template <typename T>
+Matrix<T> ones(size_t d1, size_t d2,bool isOnDevice = true)
+{
+    printf("in ones\n");
+    Matrix<T> result = Matrix<T>(d1,d2, isOnDevice);
+    result.matrixMemset(1);
+    return result;
+}
+
+template <typename T>
+Matrix<T> ones(size_t d1, size_t d2,size_t d3,bool isOnDevice = true)
+{
+    printf("in ones\n");
+    Matrix<T> result = Matrix<T>(d1,d2,d3, isOnDevice);
+    result.matrixMemset(1);
     return result;
 }
 
