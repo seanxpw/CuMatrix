@@ -2,6 +2,8 @@
     "files.associations": {
         "*.h": "c",
         "dense": "cpp",
-        "cstring": "cpp"
+        "cstring": "cpp",
+        "stdexcept": "cpp",
+        "cmath": "cpp"
     }
 }
