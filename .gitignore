@@ -1,4 +1,4 @@
-./a.out
-./mat-add
-.out
-.o
+.a.out
+mat-add
+*.out
+*.o
