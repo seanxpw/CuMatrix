@@ -27,6 +27,7 @@ private:
     T *data;
     DataPlace dataPlace;
 
+    void initialize();
     void initialize(bool isOnDevice = true);
     void allocateMemory();
     void freeMemory();
@@ -36,9 +37,13 @@ private:
 
 public:
     Matrix(size_t d1, bool isOnDevice = true);
-    Matrix(size_t d1, size_t d2,bool isOnDevice = true);
-    Matrix(size_t d1, size_t d2, size_t d3,bool isOnDevice = true);
+    Matrix(size_t d1, size_t d2, bool isOnDevice = true);
+    Matrix(size_t d1, size_t d2, size_t d3, bool isOnDevice = true);
+    // Matrix(size_t d1);
+    // Matrix(size_t d1, size_t d2);
+    // Matrix(size_t d1, size_t d2, size_t d3);
     ~Matrix();
+    Matrix(const Matrix<T> &other); // 拷贝构造函数
 
     std::string shapeString() const;
     std::vector<size_t> shape() const;
@@ -58,26 +63,48 @@ public:
     Matrix<T> operator+(const T &num) const;
     // Matrix<T> operator+(const Matrix<T> &other) const;
     // Matrix<T> operator+(const Matrix<T> &other, int axis) const;
+
+    Matrix<T> &operator=(const Matrix<T> &other);     // Copy assignment
+    Matrix<T> &operator=(Matrix<T> &&other) noexcept; // Move assignment
 };
 
 // Constructor Definitions
 template <typename T>
-Matrix<T>::Matrix(size_t d1,bool isOnDevice ) : dim1(d1), dim2(1), dim3(1)
+Matrix<T>::Matrix(size_t d1, bool isOnDevice) : dim1(d1), dim2(1), dim3(1)
 {
     initialize(isOnDevice);
 }
 
 template <typename T>
-Matrix<T>::Matrix(size_t d1, size_t d2,bool isOnDevice) : dim1(d1), dim2(d2), dim3(1)
+Matrix<T>::Matrix(size_t d1, size_t d2, bool isOnDevice) : dim1(d1), dim2(d2), dim3(1)
 {
     initialize(isOnDevice);
 }
 
 template <typename T>
-Matrix<T>::Matrix(size_t d1, size_t d2, size_t d3,bool isOnDevice) : dim1(d1), dim2(d2), dim3(d3)
+Matrix<T>::Matrix(size_t d1, size_t d2, size_t d3, bool isOnDevice) : dim1(d1), dim2(d2), dim3(d3)
 {
     initialize(isOnDevice);
 }
+
+// ambiguity
+// template <typename T>
+// Matrix<T>::Matrix(size_t d1) : dim1(d1),isOnDevice(true)
+// {
+//     initialize();
+// }
+
+// template <typename T>
+// Matrix<T>::Matrix(size_t d1, size_t d2) : dim1(d1), dim2(d2),isOnDevice(true)
+// {
+//     initialize();
+// }
+
+// template <typename T>
+//  Matrix<T>::Matrix(size_t d1, size_t d2, size_t d3) : dim1(d1), dim2(d2), dim3(d3),isOnDevice(true)
+// {
+//     initialize();
+// }
 
 // Destructor Definition
 template <typename T>
@@ -86,11 +113,32 @@ Matrix<T>::~Matrix()
     freeMemory();
 }
 
+// 拷贝构造函数
+template <typename T>
+Matrix<T>::Matrix(const Matrix<T> &other)
+{
+    dim1 = other.dim1;
+    dim2 = other.dim2;
+    dim3 = other.dim3;
+    totalSize = other.totalSize;
+    dataPlace = other.dataPlace;
+    data = other.data;
+    // allocateMemory();
+    // if (dataPlace == HOST)
+    // {
+    //     std::copy(other.data, other.data + totalSize, data);
+    // }
+    // else
+    // {
+    //     cudaMemcpy(data, other.data, totalSize * sizeof(T), cudaMemcpyDeviceToDevice);
+    // }
+}
+
 // Initialize Method
 template <typename T>
-void Matrix<T>::initialize(bool isOnDevice )
+void Matrix<T>::initialize(bool isOnDevice)
 {
-    if(isOnDevice)
+    if (isOnDevice)
     {
         this->dataPlace = DEVICE;
     }
@@ -98,6 +146,15 @@ void Matrix<T>::initialize(bool isOnDevice )
     {
         this->dataPlace = HOST;
     }
+    totalSize = dim1 * dim2 * dim3;
+    data = nullptr;
+    allocateMemory();
+}
+// Initialize Method
+template <typename T>
+void Matrix<T>::initialize()
+{
+    this->dataPlace = DEVICE;
     totalSize = dim1 * dim2 * dim3;
     data = nullptr;
     allocateMemory();
@@ -242,7 +299,7 @@ Matrix<T> Matrix<T>::broadcastTo(size_t new_dim1, size_t new_dim2, size_t new_di
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const T &num) const
 {
-    Matrix<T> result(dim1, dim2, dim3,false);
+    Matrix<T> result(dim1, dim2, dim3, false);
     if (dataPlace == HOST)
     {
         printf("in host\n");
@@ -254,7 +311,7 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
     else
     {
         result.transferToDevice();
-        size_t blockSize = TILE_SIZE*TILE_SIZE;
+        size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(totalSize) / blockSize);
         matAdd<<<numBlocks, blockSize>>>(blockSize, data, num, result.data);
         cudaDeviceSynchronize();
@@ -290,7 +347,50 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
 //     }
 //     return result;
 // }
+// Copy assignment operator
+template <typename T>
+Matrix<T> &Matrix<T>::operator=(const Matrix<T> &other)
+{
+    if (this != &other)
+    {
+        freeMemory();
+        dim1 = other.dim1;
+        dim2 = other.dim2;
+        dim3 = other.dim3;
+        totalSize = other.totalSize;
+        dataPlace = other.dataPlace;
+        allocateMemory();
+        if (dataPlace == HOST)
+        {
+            std::copy(other.data, other.data + totalSize, data);
+        }
+        else
+        {
+            cudaMemcpy(data, other.data, totalSize * sizeof(T), cudaMemcpyDeviceToDevice);
+        }
+    }
+    return *this;
+}
 
+// Move assignment operator
+template <typename T>
+Matrix<T> &Matrix<T>::operator=(Matrix<T> &&other) noexcept
+{
+    if (this != &other)
+    {
+        freeMemory();
+        dim1 = other.dim1;
+        dim2 = other.dim2;
+        dim3 = other.dim3;
+        totalSize = other.totalSize;
+        data = other.data;
+        dataPlace = other.dataPlace;
+
+        other.data = nullptr;
+        other.totalSize = 0;
+    }
+    return *this;
+}
 template <typename T>
 __global__ void matAdd(int mat_sz, const T *A, const T *B, T *C)
 { // C = A + B
