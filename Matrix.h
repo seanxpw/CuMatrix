@@ -6,7 +6,7 @@
 #include <string>
 #include <stdexcept>
 
-// replace memset
+// replace cudamemset
 #include <thrust/fill.h>
 #include <thrust/device_vector.h>
 
@@ -369,6 +369,7 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
     }
     else
     {
+        printf("bc failed\n");
         throw std::invalid_argument("Dimensions are not compatible for broadcasting");
     }
 
@@ -440,7 +441,13 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
 {
-    Matrix<T> broadCastedOther = _broadcastTo(other.shape());
+    Matrix<T> broadCastedOther = _broadcastTo(this->shape());
+    printf("\n");
+    printf("broadCastedOther\n");
+    for (int i = 0; i < broadCastedOther.getTotalSize(); i++)
+    {
+        printf("%.1f, ", broadCastedOther(i));
+    }
     Matrix<T> result(dim1, dim2, dim3, false);
     if (dataPlace == HOST)
     {
