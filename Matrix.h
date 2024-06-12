@@ -42,6 +42,7 @@ private:
     int _reshape(size_t new_d1, size_t new_d2 = 1, size_t new_d3 = 1);
 
 public:
+    Matrix();
     Matrix(size_t d1, bool isOnDevice = true);
     Matrix(size_t d1, size_t d2, bool isOnDevice = true);
     Matrix(size_t d1, size_t d2, size_t d3, bool isOnDevice = true);
@@ -54,7 +55,7 @@ public:
     // move constructor
     Matrix(Matrix<T> &&other) noexcept;
 
-    size_t getTotalSize();
+    size_t getTotalSize() const;
 
     std::string shapeString() const;
     std::vector<size_t> shape() const;
@@ -90,6 +91,14 @@ public:
 };
 
 // Constructor Definitions
+
+template <typename T>
+Matrix<T>::Matrix()
+{
+    dim1 = dim2 = dim3 = 0;
+    initialize(false);
+}
+
 template <typename T>
 Matrix<T>::Matrix(size_t d1, bool isOnDevice) : dim1(d1), dim2(1), dim3(1)
 {
@@ -149,7 +158,7 @@ Matrix<T>::Matrix(Matrix<T> &&other) noexcept
 }
 
 template <typename T>
-size_t Matrix<T>::getTotalSize()
+size_t Matrix<T>::getTotalSize() const
 {
     return this->totalSize;
 }
@@ -183,6 +192,10 @@ void Matrix<T>::initialize()
 template <typename T>
 void Matrix<T>::allocateMemory()
 {
+    if (totalSize == 0)
+    {
+        return;
+    }
     if (dataPlace == HOST)
     {
         data = new T[totalSize];
@@ -331,19 +344,19 @@ T &Matrix<T>::operator()(size_t i, size_t j, size_t k)
 }
 
 template <typename T>
-const T &Matrix<T>::operator()(size_t i)const 
+const T &Matrix<T>::operator()(size_t i) const
 {
     return data[i];
 }
 
 template <typename T>
-const T &Matrix<T>::operator()(size_t i, size_t j)const 
+const T &Matrix<T>::operator()(size_t i, size_t j) const
 {
     return data[i * dim2 + j];
 }
 
 template <typename T>
-const T &Matrix<T>::operator()(size_t i, size_t j, size_t k)const 
+const T &Matrix<T>::operator()(size_t i, size_t j, size_t k) const
 {
     return data[(i * dim2 * dim3) + (j * dim3) + k];
 }
@@ -352,9 +365,11 @@ const T &Matrix<T>::operator()(size_t i, size_t j, size_t k)const
 template <typename T>
 Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
 {
+    printf("in broad cast\n");
     size_t new_dim1 = otherShapes[0];
     size_t new_dim2 = otherShapes[1];
     size_t new_dim3 = otherShapes[2];
+    printf("try to bradcast this: %s to %d, %d, %d \n", this-> shapeString().c_str(),new_dim1,new_dim2,new_dim3);
 
     // same dimension
     if (dim1 == new_dim1 && dim2 == new_dim2 && dim3 == new_dim3)
@@ -362,9 +377,9 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
         return *this;
     }
     // either the same dim as this matrix or 1
-    if ((dim1 == new_dim1 || new_dim1 == 1) &&
-        (dim2 == new_dim2 || new_dim2 == 1) &&
-        (dim3 == new_dim3 || new_dim3 == 1))
+    if ((dim1 == new_dim1 || dim1 == 1) &&
+        (dim2 == new_dim2 || dim2 == 1) &&
+        (dim3 == new_dim3 || dim3 == 1))
     {
     }
     else
@@ -441,20 +456,37 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
 {
-    Matrix<T> broadCastedOther = _broadcastTo(this->shape());
+    printf("this shape %s\n", this->shapeString().c_str());
+    printf("other shape %s\n", other.shapeString().c_str());
+    Matrix<T> broadCasted;
+    auto data1 = this->data;
+    auto data2 = other.data;
+    if (this->getTotalSize() > other.getTotalSize())
+    {
+        // need to broad cast other to this
+        broadCasted = other._broadcastTo(this->shape());
+        data2 = broadCasted.data;
+    }
+    else
+    {
+        // this to other
+        broadCasted = this->_broadcastTo(other.shape());
+        data1 = broadCasted.data;
+    }
+
     printf("\n");
     printf("broadCastedOther\n");
-    for (int i = 0; i < broadCastedOther.getTotalSize(); i++)
+    for (int i = 0; i < broadCasted.getTotalSize(); i++)
     {
-        printf("%.1f, ", broadCastedOther(i));
+        printf("%.1f, ", broadCasted(i));
     }
-    Matrix<T> result(dim1, dim2, dim3, false);
+    Matrix<T> result(broadCasted.shapeD1(), broadCasted.shapeD2(), broadCasted.shapeD3(), false);
     if (dataPlace == HOST)
     {
-        for (size_t i = 0; i < totalSize; ++i)
+        for (size_t i = 0; i < broadCasted.getTotalSize(); ++i)
         {
             // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
-            result.data[i] = data[i] + broadCastedOther.data[i];
+            result.data[i] = data1[i] + data2[i];
         }
     }
     else
