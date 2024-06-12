@@ -53,7 +53,7 @@ public:
     Matrix(const Matrix<T> &other);
 
     // move constructor
-    Matrix(Matrix<T> &&other) noexcept;
+    // Matrix(Matrix<T> &&other) noexcept;
 
     size_t getTotalSize() const;
 
@@ -65,13 +65,8 @@ public:
     void reshape(size_t new_d1, size_t new_d2 = 1, size_t new_d3 = 1);
 
     // return the value at according index
-    T &operator()(size_t i);
-    T &operator()(size_t i, size_t j);
-    T &operator()(size_t i, size_t j, size_t k);
-
-    const T &operator()(size_t i) const;
-    const T &operator()(size_t i, size_t j) const;
-    const T &operator()(size_t i, size_t j, size_t k) const;
+    T &operator()(size_t i, size_t j = 0, size_t k = 0);
+    const T &operator()(size_t i, size_t j = 0, size_t k = 0) const;
 
     void transferToDevice();
     void transferToHost();
@@ -148,14 +143,14 @@ Matrix<T>::Matrix(const Matrix<T> &other)
 }
 
 // move constructor
-template <typename T>
-Matrix<T>::Matrix(Matrix<T> &&other) noexcept
-    : dim1(other.dim1), dim2(other.dim2), dim3(other.dim3), totalSize(other.totalSize), data(other.data), dataPlace(other.dataPlace)
-{
-    printf("in move constructor\n");
-    other.data = nullptr;
-    other.totalSize = 0;
-}
+// template <typename T>
+// Matrix<T>::Matrix(Matrix<T> &&other) noexcept
+//     : dim1(other.dim1), dim2(other.dim2), dim3(other.dim3), totalSize(other.totalSize), data(other.data), dataPlace(other.dataPlace)
+// {
+//     printf("in move constructor\n");
+//     other.data = nullptr;
+//     other.totalSize = 0;
+// }
 
 template <typename T>
 size_t Matrix<T>::getTotalSize() const
@@ -325,40 +320,18 @@ void Matrix<T>::reshape(size_t new_d1, size_t new_d2, size_t new_d3)
 }
 
 // Overloaded Operator Methods
-template <typename T>
-T &Matrix<T>::operator()(size_t i)
-{
-    return data[i];
-}
-
-template <typename T>
-T &Matrix<T>::operator()(size_t i, size_t j)
-{
-    return data[i * dim2 + j];
-}
 
 template <typename T>
 T &Matrix<T>::operator()(size_t i, size_t j, size_t k)
 {
-    return data[(i * dim2 * dim3) + (j * dim3) + k];
-}
-
-template <typename T>
-const T &Matrix<T>::operator()(size_t i) const
-{
-    return data[i];
-}
-
-template <typename T>
-const T &Matrix<T>::operator()(size_t i, size_t j) const
-{
-    return data[i * dim2 + j];
+    // printf("i = %d, j = %d, k = %d, index = %d\n",i,j,k,k * dim1*dim2 + j * dim1 + i);
+    return this->data[k * dim1 * dim2 + j * dim1 + i];
 }
 
 template <typename T>
 const T &Matrix<T>::operator()(size_t i, size_t j, size_t k) const
 {
-    return data[(i * dim2 * dim3) + (j * dim3) + k];
+    return this->data[k * dim1 * dim2 + j * dim1 + i];
 }
 
 // Helper method for broadcasting
@@ -369,7 +342,7 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
     size_t new_dim1 = otherShapes[0];
     size_t new_dim2 = otherShapes[1];
     size_t new_dim3 = otherShapes[2];
-    printf("try to bradcast this: %s to %d, %d, %d \n", this-> shapeString().c_str(),new_dim1,new_dim2,new_dim3);
+    // printf("try to bradcast this: %s to %d, %d, %d \n", this-> shapeString().c_str(),new_dim1,new_dim2,new_dim3);
 
     // same dimension
     if (dim1 == new_dim1 && dim2 == new_dim2 && dim3 == new_dim3)
@@ -407,6 +380,7 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
                 }
             }
         }
+        printf("bc end\n");
         return result;
     }
 
@@ -461,6 +435,7 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
     Matrix<T> broadCasted;
     auto data1 = this->data;
     auto data2 = other.data;
+    printf("test \n");
     if (this->getTotalSize() > other.getTotalSize())
     {
         // need to broad cast other to this
