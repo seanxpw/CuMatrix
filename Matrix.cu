@@ -5,11 +5,30 @@ int main()
 {
     Matrix<float> matrix3D(4, 4, false);
     std::cout << matrix3D.shapeString();
-    // matrix3D(0, 0, 0) = 1.0f;
+    matrix3D.matrixMemset(0);
     matrix3D = matrix3D + 100;
-    Matrix<float> matrix1 = ones<float>(1000, 2,5,true);
-
+    printf("start to copy things!!!\n");
+    Matrix<float> matrix2 = matrix3D;
+    // for (int i = 0; i < matrix3D.getTotalSize(); i++)
+    // {
+    //     printf("%f, ", matrix3D(i));
+    // }
+    printf("constructor test\n");
+    Matrix<float> matrix1 = ones<float>(4, 1, false);
+    // for (int i = 0; i < matrix1.getTotalSize(); i++)
+    // {
+    //     printf("%f, ", matrix1(i));
+    // }
+    matrix3D = matrix3D + matrix1;
+    for (int i = 0; i < matrix3D.getTotalSize(); i++)
+    {
+        printf("%f, ", matrix3D(i));
+    }
     matrix1.transferToHost();
-    std::cout << "Matrix(0, 0, 0): " << matrix1(5) << std::endl;
+    matrix3D.transferToHost();
+
+    std::cout << "Matrix1: " << matrix1(0) << std::endl;
+    std::cout << "Matrix3d: " << matrix3D(3, 2) << std::endl;
+    std::cout << "Matrix3d: " << matrix2(3, 2) << std::endl;
     return 0;
 }

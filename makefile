@@ -5,8 +5,8 @@ CXX := g++
 NVCC := nvcc
 
 # Compiler flags
-CXXFLAGS := -std=c++17 -O2
-NVCCFLAGS := -std=c++17 -O2
+CXXFLAGS := -std=c++17 -O0
+NVCCFLAGS := -std=c++17 -O0
 
 # Target executable
 TARGET := a.out

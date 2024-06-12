@@ -4,9 +4,9 @@
 #include <iostream>
 #include <vector>
 #include <string>
-#include <cstring>
 #include <stdexcept>
 
+// replace memset
 #include <thrust/fill.h>
 #include <thrust/device_vector.h>
 
@@ -36,24 +36,32 @@ private:
     void allocateMemory();
     void freeMemory();
 
-    // Helper method for broadcasting
-    Matrix<T> broadcastTo(size_t new_dim1, size_t new_dim2, size_t new_dim3, int axis = -1) const;
+    // Helper method for broadcasting, it'll try to broadcast "this" to the given matrix
+    Matrix<T> _broadcastTo(const Matrix<T> &other) const;
+
+    int _reshape(size_t new_d1, size_t new_d2 = 1, size_t new_d3 = 1);
 
 public:
     Matrix(size_t d1, bool isOnDevice = true);
     Matrix(size_t d1, size_t d2, bool isOnDevice = true);
     Matrix(size_t d1, size_t d2, size_t d3, bool isOnDevice = true);
-    // Matrix(size_t d1);
-    // Matrix(size_t d1, size_t d2);
-    // Matrix(size_t d1, size_t d2, size_t d3);
+
     ~Matrix();
-    Matrix(const Matrix<T> &other); // 拷贝构造函数
+
+    // copy constructor this is crazy!!
+    Matrix(const Matrix<T> &other);
+
+    // move constructor
+    Matrix(Matrix<T> &&other) noexcept;
+
+    size_t getTotalSize();
 
     std::string shapeString() const;
     std::vector<size_t> shape() const;
     size_t shapeD1() const;
     size_t shapeD2() const;
     size_t shapeD3() const;
+    void reshape(size_t new_d1, size_t new_d2 = 1, size_t new_d3 = 1);
 
     // return the value at according index
     T &operator()(size_t i);
@@ -66,9 +74,12 @@ public:
     void matrixMemset(T value);
 
     // Overload addition operators with optional broadcasting axis
+
+    // all elements add a num
     Matrix<T> operator+(const T &num) const;
-    // Matrix<T> operator+(const Matrix<T> &other) const;
-    // Matrix<T> operator+(const Matrix<T> &other, int axis) const;
+
+    // all element add to another matrix
+    Matrix<T> operator+(const Matrix<T> &other) const;
 
     Matrix<T> &operator=(const Matrix<T> &other);     // Copy assignment
     Matrix<T> &operator=(Matrix<T> &&other) noexcept; // Move assignment
@@ -93,25 +104,6 @@ Matrix<T>::Matrix(size_t d1, size_t d2, size_t d3, bool isOnDevice) : dim1(d1), 
     initialize(isOnDevice);
 }
 
-// ambiguity
-// template <typename T>
-// Matrix<T>::Matrix(size_t d1) : dim1(d1),isOnDevice(true)
-// {
-//     initialize();
-// }
-
-// template <typename T>
-// Matrix<T>::Matrix(size_t d1, size_t d2) : dim1(d1), dim2(d2),isOnDevice(true)
-// {
-//     initialize();
-// }
-
-// template <typename T>
-//  Matrix<T>::Matrix(size_t d1, size_t d2, size_t d3) : dim1(d1), dim2(d2), dim3(d3),isOnDevice(true)
-// {
-//     initialize();
-// }
-
 // Destructor Definition
 template <typename T>
 Matrix<T>::~Matrix()
@@ -119,27 +111,44 @@ Matrix<T>::~Matrix()
     freeMemory();
 }
 
-// 拷贝构造函数
+// copy constructor
+// Matrix<float> matrix3D(4, 4, 1, false);
+// Matrix<float> matrix2 = matrix3D; // Calls the copy constructor
 template <typename T>
 Matrix<T>::Matrix(const Matrix<T> &other)
 {
+    printf("in copy constructor\n");
     dim1 = other.dim1;
     dim2 = other.dim2;
     dim3 = other.dim3;
     totalSize = other.totalSize;
     dataPlace = other.dataPlace;
-    data = other.data;
-    // allocateMemory();
-    // if (dataPlace == HOST)
-    // {
-    //     std::copy(other.data, other.data + totalSize, data);
-    // }
-    // else
-    // {
-    //     cudaMemcpy(data, other.data, totalSize * sizeof(T), cudaMemcpyDeviceToDevice);
-    // }
+    allocateMemory();
+    if (dataPlace == HOST)
+    {
+        std::copy(other.data, other.data + totalSize, data);
+    }
+    else
+    {
+        cudaMemcpy(data, other.data, totalSize * sizeof(T), cudaMemcpyDeviceToDevice);
+    }
 }
 
+// move constructor
+template <typename T>
+Matrix<T>::Matrix(Matrix<T> &&other) noexcept
+    : dim1(other.dim1), dim2(other.dim2), dim3(other.dim3), totalSize(other.totalSize), data(other.data), dataPlace(other.dataPlace)
+{
+    printf("in move constructor\n");
+    other.data = nullptr;
+    other.totalSize = 0;
+}
+
+template <typename T>
+size_t Matrix<T>::getTotalSize()
+{
+    return this->totalSize;
+}
 // Initialize Method
 template <typename T>
 void Matrix<T>::initialize(bool isOnDevice)
@@ -271,6 +280,33 @@ size_t Matrix<T>::shapeD3() const
     return dim3;
 }
 
+// return -1 on fail, 0 on success
+template <typename T>
+int Matrix<T>::_reshape(size_t new_d1, size_t new_d2, size_t new_d3)
+{
+    if (this->totalSize != new_d1 * new_d2 * new_d3)
+    {
+        return -1;
+    }
+    else
+    {
+        this->dim1 = new_d1;
+        this->dim2 = new_d2;
+        this->dim2 = new_d2;
+        return 0;
+    }
+}
+
+template <typename T>
+void Matrix<T>::reshape(size_t new_d1, size_t new_d2, size_t new_d3)
+{
+    int result = _reshape(new_d1, new_d2, new_d3);
+    if (result == -1)
+    {
+        printf("reshape faild %s cannot be reshaped to %ld, %ld, %ld", this->shapeString(), new_d1, new_d2, new_d3);
+    }
+}
+
 // Overloaded Operator Methods
 template <typename T>
 T &Matrix<T>::operator()(size_t i)
@@ -292,30 +328,67 @@ T &Matrix<T>::operator()(size_t i, size_t j, size_t k)
 
 // Helper method for broadcasting
 template <typename T>
-Matrix<T> Matrix<T>::broadcastTo(size_t new_dim1, size_t new_dim2, size_t new_dim3, int axis) const
+Matrix<T> Matrix<T>::_broadcastTo(const Matrix<T> &other) const
 {
-    if ((dim1 != 1 && dim1 != new_dim1) ||
-        (dim2 != 1 && dim2 != new_dim2) ||
-        (dim3 != 1 && dim3 != new_dim3))
+    size_t new_dim1 = other.shapeD1();
+    size_t new_dim2 = other.shapeD2();
+    size_t new_dim3 = other.shapeD3();
+
+    // same dimension
+    if (dim1 == new_dim1 && dim2 == new_dim2 && dim3 == new_dim3)
     {
-        throw std::invalid_argument("Incompatible shapes for broadcasting");
+        return *this;
+    }
+    // either the same dim as this matrix or 1
+    if ((dim1 == new_dim1 || new_dim1 == 1) &&
+        (dim2 == new_dim2 || new_dim2 == 1) &&
+        (dim3 == new_dim3 || new_dim3 == 1))
+    {
+    }
+    else
+    {
+        throw std::invalid_argument("Dimensions are not compatible for broadcasting");
     }
 
-    Matrix<T> result(new_dim1, new_dim2, new_dim3);
-    for (size_t i = 0; i < new_dim1; ++i)
+    //  A 3 3 3  B 3 1 3 => B 3 3 3
+    if (this->dataPlace == HOST)
     {
-        for (size_t j = 0; j < new_dim2; ++j)
+        Matrix<T> result(new_dim1, new_dim2, new_dim3, false);
+
+        // Iterate through the dimensions and copy values from the original matrix
+        for (size_t i = 0; i < new_dim1; ++i)
         {
-            for (size_t k = 0; k < new_dim3; ++k)
+            for (size_t j = 0; j < new_dim2; ++j)
             {
-                size_t src_i = (dim1 == 1) ? 0 : i;
-                size_t src_j = (dim2 == 1) ? 0 : j;
-                size_t src_k = (dim3 == 1) ? 0 : k;
-                result(i, j, k) = data[(src_i * dim2 * dim3) + (src_j * dim3) + src_k];
+                for (size_t k = 0; k < new_dim3; ++k)
+                {
+                    size_t src_i = dim1 == 1 ? 0 : i;
+                    size_t src_j = dim2 == 1 ? 0 : j;
+                    size_t src_k = dim3 == 1 ? 0 : k;
+                    result(i, j, k) = (*this)(src_i, src_j, src_k);
+                }
             }
         }
+        return result;
     }
-    return result;
+
+    // so what can be broadcasted?
+    // at least one dim should be the same?
+
+    // broadcast with one by one here
+    // A 3 3 3  B 1 1 3 => B 3 3 3
+    // A 3 3 3  B 3 1 1 => B 3 3 3
+    // A 3 3 3  B 1 3 1 => B 3 3 3
+    // A 3 3 3  B 1 1 1 => B 3 3 3
+    // one by one is special
+
+    // A 9 9 3  B 3 3 3 => connot be broadcasted, even though it's possible to do 3*3 to 9*9
+
+    // broadcast with one dim difference
+    // A 3 3 3  B 3 1 3 => B 3 3 3
+    // A 3 3 3  B 1 3 3 => B 3 3 3
+    // A 3 3 3  B 3 3 1 => B 3 3 3
+    // A 3 3 1  B 3 1 1 => B 3 3 1
 }
 
 // Addition Operator Overloads
@@ -342,42 +415,46 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
     return result;
 }
 
-// template <typename T>
-// Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
-// {
-//     return *this + other, -1;
-// }
+template <typename T>
+Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
+{
+    Matrix<T> result(dim1, dim2, dim3, false);
+    if (dataPlace == HOST)
+    {
+        for (size_t i = 0; i < totalSize; ++i)
+        {
+            // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
+            result.data[i] = data[i] + other.data[i];
+        }
+    }
+    else
+    {
+        result.transferToDevice();
+        size_t blockSize = TILE_SIZE * TILE_SIZE;
+        size_t numBlocks = ceil(float(totalSize) / blockSize);
+        matAdd<<<numBlocks, blockSize>>>(blockSize, data, other.data, result.data);
+        cudaDeviceSynchronize();
+    }
+    return result;
+}
 
-// template <typename T>
-// Matrix<T> Matrix<T>::operator+(const Matrix<T> &other, int axis) const
-// {
-//     size_t new_dim1 = std::max(dim1, other.dim1);
-//     size_t new_dim2 = std::max(dim2, other.dim2);
-//     size_t new_dim3 = std::max(dim3, other.dim3);
 
-//     Matrix<T> broadcasted_other = other.broadcastTo(new_dim1, new_dim2, new_dim3, axis);
 
-//     Matrix<T> result(new_dim1, new_dim2, new_dim3);
-//     for (size_t i = 0; i < new_dim1; ++i)
-//     {
-//         for (size_t j = 0; j < new_dim2; ++j)
-//         {
-//             for (size_t k = 0; k < new_dim3; ++k)
-//             {
-//                 result(i, j, k) = (*this)(i, j, k) + broadcasted_other(i, j, k);
-//             }
-//         }
-//     }
-//     return result;
-// }
+
 // Copy assignment operator
+// Matrix<float> matrix3D(4, 4, 1, false);
+// Matrix<float> matrix2(4, 4, 1, false);
+// matrix2 = matrix3D; // Calls the copy assignment operator
 template <typename T>
 Matrix<T> &Matrix<T>::operator=(const Matrix<T> &other)
 {
+    printf("out copy operator =\n");
     if (this != &other)
     {
+        printf("in operator =\n");
+        printf("old memory %f, other memory %f", data[0], other.data[0]);
         freeMemory();
-        dim1 = other.dim1;
+        this->dim1 = other.dim1;
         dim2 = other.dim2;
         dim3 = other.dim3;
         totalSize = other.totalSize;
@@ -396,11 +473,15 @@ Matrix<T> &Matrix<T>::operator=(const Matrix<T> &other)
 }
 
 // Move assignment operator
+// man like A = A + B, the result of A + B is a right value
+// matrix3D = matrix3D + 100;
 template <typename T>
 Matrix<T> &Matrix<T>::operator=(Matrix<T> &&other) noexcept
 {
+    printf("in move operator= \n");
     if (this != &other)
     {
+        // printf("old memory %f, other memory %f\n", data[0], other.data[0]);
         freeMemory();
         dim1 = other.dim1;
         dim2 = other.dim2;
@@ -408,6 +489,7 @@ Matrix<T> &Matrix<T>::operator=(Matrix<T> &&other) noexcept
         totalSize = other.totalSize;
         data = other.data;
         dataPlace = other.dataPlace;
+        // printf("old memory %f, other memory %f\n", data[0], other.data[0]);
 
         other.data = nullptr;
         other.totalSize = 0;
@@ -445,19 +527,19 @@ Matrix<T> zeros(size_t d1, bool isOnDevice = true)
 }
 
 template <typename T>
-Matrix<T> zeros(size_t d1, size_t d2,bool isOnDevice = true)
+Matrix<T> zeros(size_t d1, size_t d2, bool isOnDevice = true)
 {
     printf("in zeros\n");
-    Matrix<T> result = Matrix<T>(d1,d2, isOnDevice);
+    Matrix<T> result = Matrix<T>(d1, d2, isOnDevice);
     result.matrixMemset(0);
     return result;
 }
 
 template <typename T>
-Matrix<T> zeros(size_t d1, size_t d2,size_t d3,bool isOnDevice = true)
+Matrix<T> zeros(size_t d1, size_t d2, size_t d3, bool isOnDevice = true)
 {
     printf("in zeros\n");
-    Matrix<T> result = Matrix<T>(d1,d2,d3, isOnDevice);
+    Matrix<T> result = Matrix<T>(d1, d2, d3, isOnDevice);
     result.matrixMemset(0);
     return result;
 }
@@ -472,19 +554,19 @@ Matrix<T> ones(size_t d1, bool isOnDevice = true)
 }
 
 template <typename T>
-Matrix<T> ones(size_t d1, size_t d2,bool isOnDevice = true)
+Matrix<T> ones(size_t d1, size_t d2, bool isOnDevice = true)
 {
     printf("in ones\n");
-    Matrix<T> result = Matrix<T>(d1,d2, isOnDevice);
+    Matrix<T> result = Matrix<T>(d1, d2, isOnDevice);
     result.matrixMemset(1);
     return result;
 }
 
 template <typename T>
-Matrix<T> ones(size_t d1, size_t d2,size_t d3,bool isOnDevice = true)
+Matrix<T> ones(size_t d1, size_t d2, size_t d3, bool isOnDevice = true)
 {
     printf("in ones\n");
-    Matrix<T> result = Matrix<T>(d1,d2,d3, isOnDevice);
+    Matrix<T> result = Matrix<T>(d1, d2, d3, isOnDevice);
     result.matrixMemset(1);
     return result;
 }
