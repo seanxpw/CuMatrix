@@ -37,7 +37,7 @@ private:
     void freeMemory();
 
     // Helper method for broadcasting, it'll try to broadcast "this" to the given matrix
-    Matrix<T> _broadcastTo(const Matrix<T> &other) const;
+    Matrix<T> _broadcastTo(const std::vector<size_t> &shapes) const;
 
     int _reshape(size_t new_d1, size_t new_d2 = 1, size_t new_d3 = 1);
 
@@ -67,6 +67,10 @@ public:
     T &operator()(size_t i);
     T &operator()(size_t i, size_t j);
     T &operator()(size_t i, size_t j, size_t k);
+
+    const T &operator()(size_t i) const;
+    const T &operator()(size_t i, size_t j) const;
+    const T &operator()(size_t i, size_t j, size_t k) const;
 
     void transferToDevice();
     void transferToHost();
@@ -326,13 +330,31 @@ T &Matrix<T>::operator()(size_t i, size_t j, size_t k)
     return data[(i * dim2 * dim3) + (j * dim3) + k];
 }
 
+template <typename T>
+const T &Matrix<T>::operator()(size_t i)const 
+{
+    return data[i];
+}
+
+template <typename T>
+const T &Matrix<T>::operator()(size_t i, size_t j)const 
+{
+    return data[i * dim2 + j];
+}
+
+template <typename T>
+const T &Matrix<T>::operator()(size_t i, size_t j, size_t k)const 
+{
+    return data[(i * dim2 * dim3) + (j * dim3) + k];
+}
+
 // Helper method for broadcasting
 template <typename T>
-Matrix<T> Matrix<T>::_broadcastTo(const Matrix<T> &other) const
+Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
 {
-    size_t new_dim1 = other.shapeD1();
-    size_t new_dim2 = other.shapeD2();
-    size_t new_dim3 = other.shapeD3();
+    size_t new_dim1 = otherShapes[0];
+    size_t new_dim2 = otherShapes[1];
+    size_t new_dim3 = otherShapes[2];
 
     // same dimension
     if (dim1 == new_dim1 && dim2 == new_dim2 && dim3 == new_dim3)
@@ -418,13 +440,14 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
 {
+    Matrix<T> broadCastedOther = _broadcastTo(other.shape());
     Matrix<T> result(dim1, dim2, dim3, false);
     if (dataPlace == HOST)
     {
         for (size_t i = 0; i < totalSize; ++i)
         {
             // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
-            result.data[i] = data[i] + other.data[i];
+            result.data[i] = data[i] + broadCastedOther.data[i];
         }
     }
     else
@@ -437,9 +460,6 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
     }
     return result;
 }
-
-
-
 
 // Copy assignment operator
 // Matrix<float> matrix3D(4, 4, 1, false);
