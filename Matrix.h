@@ -17,6 +17,7 @@ enum DataPlace
     HOST,
     DEVICE
 };
+
 template <typename T>
 __global__ void matAdd(int mat_sz, const T *A, const T b, T *C);
 
@@ -25,6 +26,12 @@ __global__ void matAdd(int mat_sz, const T *A, const T *B, T *C);
 
 template <typename T>
 __global__ void broadcastKernel(const T *src, T *dst, size_t dim1, size_t dim2, size_t dim3, size_t new_dim1, size_t new_dim2, size_t new_dim3);
+
+template <typename T>
+__global__ void matElementMul(int mat_sz, const T *A, const T b, T *C);
+
+template <typename T>
+__global__ void matElementMul(int mat_sz, const T *A, const T *B, T *C);
 
 template <typename T>
 class Matrix
@@ -84,6 +91,9 @@ public:
 
     // all element add to another matrix
     Matrix<T> operator+(const Matrix<T> &other) const;
+
+    Matrix<T> operator*(const T &num) const;
+    Matrix<T> operator*(const Matrix<T> &other) const;
 
     Matrix<T> &operator=(const Matrix<T> &other);     // Copy assignment
     Matrix<T> &operator=(Matrix<T> &&other) noexcept; // Move assignment
@@ -347,7 +357,7 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
     size_t new_dim1 = otherShapes[0];
     size_t new_dim2 = otherShapes[1];
     size_t new_dim3 = otherShapes[2];
-    printf("try to bradcast this: %s to %d, %d, %d \n", this-> shapeString().c_str(),new_dim1,new_dim2,new_dim3);
+    printf("try to bradcast this: %s to %d, %d, %d \n", this->shapeString().c_str(), new_dim1, new_dim2, new_dim3);
 
     // same dimension
     if (dim1 == new_dim1 && dim2 == new_dim2 && dim3 == new_dim3)
@@ -390,13 +400,12 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
     {
         Matrix<T> result(new_dim1, new_dim2, new_dim3, true);
         result.transferToDevice();
-        // ::dim3 means use cuda dim3 defined in glocal space 
+        // ::dim3 means use cuda dim3 defined in glocal space
         ::dim3 blockDim(TILE_SIZE, TILE_SIZE, 1);
         ::dim3 gridDim(
             (new_dim1 + blockDim.x - 1) / blockDim.x,
             (new_dim2 + blockDim.y - 1) / blockDim.y,
-            (new_dim3 + blockDim.z - 1) / blockDim.z
-        );
+            (new_dim3 + blockDim.z - 1) / blockDim.z);
         broadcastKernel<<<gridDim, blockDim>>>(this->data, result.data, dim1, dim2, dim3, new_dim1, new_dim2, new_dim3);
         cudaDeviceSynchronize();
         printf(" out _broadcastTo\n");
@@ -483,7 +492,7 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
         result.transferToDevice();
         size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(totalSize) / blockSize);
-        matAdd<<<numBlocks, blockSize>>>(blockSize, data, num, result.data);
+        matAdd<<<numBlocks, blockSize>>>(totalSize, data, num, result.data);
         cudaDeviceSynchronize();
         return result;
     }
@@ -492,8 +501,13 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
 {
-    // printf("this shape %s\n", this->shapeString().c_str());
-    // printf("other shape %s\n", other.shapeString().c_str());
+    printf("this shape %s\n", this->shapeString().c_str());
+    printf("other shape %s\n", other.shapeString().c_str());
+    if (this->dataPlace != other.dataPlace)
+    {
+        printf("ERROR: try to calculate matrix on both cpu and gpu side, abort\n");
+        exit(1);
+    }
     std::vector<size_t> broadcastedShape;
     auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
@@ -507,8 +521,15 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
             // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
             result.data[i] = data1[i] + data2[i];
         }
-        delete []data1;
-        delete []data2;
+        if (this->getTotalSize() > other.getTotalSize())
+        {
+            delete[] data2;
+        }
+        else if (this->getTotalSize() < other.getTotalSize())
+        {
+            delete[] data1;
+        }
+
         return result;
     }
     else
@@ -516,11 +537,95 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
         Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, true);
         size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
-        matAdd<<<numBlocks, blockSize>>>(blockSize, data1, data2, result.data);
+        matAdd<<<numBlocks, blockSize>>>(totalSize, data1, data2, result.data);
         cudaDeviceSynchronize();
         // printf("out kernel\n");
-        cudaFree(data1);
-        cudaFree(data2);
+        if (this->getTotalSize() > other.getTotalSize())
+        {
+            cudaFree(data2);
+        }
+        else if (this->getTotalSize() < other.getTotalSize())
+        {
+            cudaFree(data1);
+        }
+        return result;
+    }
+}
+
+// multiplication overload
+template <typename T>
+Matrix<T> Matrix<T>::operator*(const T &num) const
+{
+    if (dataPlace == HOST)
+    {
+        Matrix<T> result(dim1, dim2, dim3, false);
+        printf("in host\n");
+        for (size_t i = 0; i < totalSize; ++i)
+        {
+            result.data[i] = data[i] * num;
+        }
+        return result;
+    }
+    else
+    {
+        Matrix<T> result(dim1, dim2, dim3, true);
+        result.transferToDevice();
+        size_t blockSize = TILE_SIZE * TILE_SIZE;
+        size_t numBlocks = ceil(float(totalSize) / blockSize);
+        matElementMul<<<numBlocks, blockSize>>>(totalSize, data, num, result.data);
+        cudaDeviceSynchronize();
+        return result;
+    }
+}
+
+template <typename T>
+Matrix<T> Matrix<T>::operator*(const Matrix<T> &other) const
+{
+    if (this->dataPlace != other.dataPlace)
+    {
+        printf("ERROR: try to calculate matrix on both cpu and gpu side, abort\n");
+        exit(1);
+    }
+    std::vector<size_t> broadcastedShape;
+    auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
+    size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
+    size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim2;
+
+    if (dataPlace == HOST)
+    {
+        Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, false);
+        for (size_t i = 0; i < broadcastedTotalSize; ++i)
+        {
+            // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
+            result.data[i] = data1[i] * data2[i];
+        }
+        if (this->getTotalSize() > other.getTotalSize())
+        {
+            delete[] data2;
+        }
+        else if (this->getTotalSize() < other.getTotalSize())
+        {
+            delete[] data1;
+        }
+
+        return result;
+    }
+    else
+    {
+        Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, true);
+        size_t blockSize = TILE_SIZE * TILE_SIZE;
+        size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
+        matElementMul<<<numBlocks, blockSize>>>(totalSize, data1, data2, result.data);
+        cudaDeviceSynchronize();
+        // printf("out kernel\n");
+        if (this->getTotalSize() > other.getTotalSize())
+        {
+            cudaFree(data2);
+        }
+        else if (this->getTotalSize() < other.getTotalSize())
+        {
+            cudaFree(data1);
+        }
         return result;
     }
 }
@@ -598,6 +703,25 @@ __global__ void matAdd(int mat_sz, const T *A, const T b, T *C)
     if (i < mat_sz)
     {
         C[i] = b + A[i];
+    }
+}
+
+template <typename T>
+__global__ void matElementMul(int mat_sz, const T *A, const T *B, T *C)
+{ // C = A * B
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < mat_sz)
+    {
+        C[i] = B[i] * A[i];
+    }
+}
+template <typename T>
+__global__ void matElementMul(int mat_sz, const T *A, const T b, T *C)
+{ // C = A * B
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < mat_sz)
+    {
+        C[i] = b * A[i];
     }
 }
 

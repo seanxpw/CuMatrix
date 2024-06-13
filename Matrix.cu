@@ -3,7 +3,8 @@
 
 int main()
 {
-    Matrix<float> matrix3D(4, 4, 4, false);
+    Matrix<float> matrix3D(40, 40, 4, true);
+    Matrix<float> matrix1 = ones<float>(1, 1, 4, true);
     // matrix3D(1,1,3) = 888;
     matrix3D = matrix3D + 100;
     // std::cout << matrix3D.shapeString();
@@ -16,21 +17,22 @@ int main()
     // {
     //     printf("%.1f, ",  matrix3D(i));
     // }
-    matrix2.transferToHost();
-    printf("matrix2\n");
-    for (int i = 0; i < matrix2.getTotalSize(); i++)
-    {
-        printf("%.1f, ", matrix2(i));
-    }
+    // matrix2.transferToHost();
+    // printf("matrix2\n");
+    // for (int i = 0; i < matrix2.getTotalSize(); i++)
+    // {
+    //     printf("%.1f, ", matrix2(i));
+    // }
 
     printf("\n");
-    Matrix<float> matrix1 = ones<float>(1, 1, 4, false);
+   
     // printf("matrix1\n");
     // for (int i = 0; i < matrix1.getTotalSize(); i++)
     // {
     //     printf("%.1f, ", matrix1(i));
     // }
-    matrix3D = matrix1 + matrix3D + .5;
+    // matrix1 = matrix1 + 1.5;
+    matrix3D = matrix3D  + matrix1 + 1.5 * matrix3D;
     matrix3D.transferToHost();
     printf("matrix3D = matrix3D + matrix1\n");
     printf("matrix3d\n");
