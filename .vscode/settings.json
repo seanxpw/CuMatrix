@@ -68,6 +68,7 @@
         "typeinfo": "cpp",
         "alignedvector3": "cpp",
         "shared_mutex": "cpp",
-        "cfenv": "cpp"
+        "cfenv": "cpp",
+        "*.inc": "cpp"
     }
 }

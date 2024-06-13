@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <utility>
 
 // replace cudamemset
 #include <thrust/fill.h>
@@ -23,6 +24,9 @@ template <typename T>
 __global__ void matAdd(int mat_sz, const T *A, const T *B, T *C);
 
 template <typename T>
+__global__ void broadcastKernel(const T *src, T *dst, size_t dim1, size_t dim2, size_t dim3, size_t new_dim1, size_t new_dim2, size_t new_dim3);
+
+template <typename T>
 class Matrix
 {
 private:
@@ -38,7 +42,7 @@ private:
 
     // Helper method for broadcasting, it'll try to broadcast "this" to the given matrix
     Matrix<T> _broadcastTo(const std::vector<size_t> &shapes) const;
-
+    std::pair<T *, T *> _broadcast(const Matrix<T> &m1, const Matrix<T> &m2, std::vector<size_t> &broadcastedShape) const;
     int _reshape(size_t new_d1, size_t new_d2 = 1, size_t new_d3 = 1);
 
 public:
@@ -53,7 +57,7 @@ public:
     Matrix(const Matrix<T> &other);
 
     // move constructor
-    // Matrix(Matrix<T> &&other) noexcept;
+    Matrix(Matrix<T> &&other) noexcept;
 
     size_t getTotalSize() const;
 
@@ -143,14 +147,14 @@ Matrix<T>::Matrix(const Matrix<T> &other)
 }
 
 // move constructor
-// template <typename T>
-// Matrix<T>::Matrix(Matrix<T> &&other) noexcept
-//     : dim1(other.dim1), dim2(other.dim2), dim3(other.dim3), totalSize(other.totalSize), data(other.data), dataPlace(other.dataPlace)
-// {
-//     printf("in move constructor\n");
-//     other.data = nullptr;
-//     other.totalSize = 0;
-// }
+template <typename T>
+Matrix<T>::Matrix(Matrix<T> &&other) noexcept
+    : dim1(other.dim1), dim2(other.dim2), dim3(other.dim3), totalSize(other.totalSize), data(other.data), dataPlace(other.dataPlace)
+{
+    printf("in move constructor\n");
+    other.data = nullptr;
+    other.totalSize = 0;
+}
 
 template <typename T>
 size_t Matrix<T>::getTotalSize() const
@@ -339,10 +343,11 @@ template <typename T>
 Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
 {
     printf("in broad cast\n");
+
     size_t new_dim1 = otherShapes[0];
     size_t new_dim2 = otherShapes[1];
     size_t new_dim3 = otherShapes[2];
-    // printf("try to bradcast this: %s to %d, %d, %d \n", this-> shapeString().c_str(),new_dim1,new_dim2,new_dim3);
+    printf("try to bradcast this: %s to %d, %d, %d \n", this-> shapeString().c_str(),new_dim1,new_dim2,new_dim3);
 
     // same dimension
     if (dim1 == new_dim1 && dim2 == new_dim2 && dim3 == new_dim3)
@@ -360,8 +365,6 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
         printf("bc failed\n");
         throw std::invalid_argument("Dimensions are not compatible for broadcasting");
     }
-
-    //  A 3 3 3  B 3 1 3 => B 3 3 3
     if (this->dataPlace == HOST)
     {
         Matrix<T> result(new_dim1, new_dim2, new_dim3, false);
@@ -383,6 +386,20 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
         printf("bc end\n");
         return result;
     }
+    else
+    {
+        Matrix<T> result(new_dim1, new_dim2, new_dim3, true);
+        result.transferToDevice();
+        // ::dim3 means use cuda dim3 defined in glocal space 
+        ::dim3 blockDim(TILE_SIZE, TILE_SIZE, 1);
+        ::dim3 gridDim(
+            (new_dim1 + blockDim.x - 1) / blockDim.x,
+            (new_dim2 + blockDim.y - 1) / blockDim.y,
+            (new_dim3 + blockDim.z - 1) / blockDim.z
+        );
+        broadcastKernel<<<gridDim, blockDim>>>(this->data, result.data, dim1, dim2, dim3, new_dim1, new_dim2, new_dim3);
+        cudaDeviceSynchronize();
+    }
 
     // so what can be broadcasted?
     // at least one dim should be the same?
@@ -403,28 +420,70 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
     // A 3 3 1  B 3 1 1 => B 3 3 1
 }
 
+// broadcast m1 or m2 to keep them the same dimension
+// usually m1 = *this
+template <typename T>
+std::pair<T *, T *> Matrix<T>::_broadcast(const Matrix<T> &m1, const Matrix<T> &m2, std::vector<size_t> &broadcastedShape) const
+{
+    if (m1.getTotalSize() == m2.getTotalSize())
+    {
+        // No need to broadcast, return the original pointers
+        broadcastedShape = m1.shape();
+        return std::make_pair(m1.data, m2.data);
+    }
+
+    Matrix<T> broadCasted;
+    if (m1.getTotalSize() > m2.getTotalSize())
+    {
+        // Broadcast m2 to m1
+        printf(" Broadcast m2 to m1\n");
+        broadCasted = m2._broadcastTo(m1.shape());
+        broadcastedShape = broadCasted.shape();
+        auto result = std::make_pair(m1.data, broadCasted.data);
+        broadCasted.data = nullptr;
+        return result;
+    }
+    else
+    {
+        // Broadcast m1 to m2
+        printf(" Broadcast m1 to m2\n");
+        broadCasted = m1._broadcastTo(m2.shape());
+        broadcastedShape = broadCasted.shape();
+        printf("dimshape broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
+        auto result = std::make_pair(broadCasted.data, m2.data);
+        broadCasted.data = nullptr;
+        printf(" finish Broadcast m1 to m2\n");
+        return result;
+    }
+}
+
 // Addition Operator Overloads
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const T &num) const
 {
-    Matrix<T> result(dim1, dim2, dim3, false);
+    // Matrix<T> result(dim1, dim2, dim3, false);
+    // this is crazy if defined here, it won't call move constructor
+    // may be Return Value Optimization (RVO) and Named Return Value Optimization (NRVO)
     if (dataPlace == HOST)
     {
+        Matrix<T> result(dim1, dim2, dim3, false);
         printf("in host\n");
         for (size_t i = 0; i < totalSize; ++i)
         {
             result.data[i] = data[i] + num;
         }
+        return result;
     }
     else
     {
+        Matrix<T> result(dim1, dim2, dim3, true);
         result.transferToDevice();
         size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(totalSize) / blockSize);
         matAdd<<<numBlocks, blockSize>>>(blockSize, data, num, result.data);
         cudaDeviceSynchronize();
+        return result;
     }
-    return result;
 }
 
 template <typename T>
@@ -432,47 +491,44 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
 {
     printf("this shape %s\n", this->shapeString().c_str());
     printf("other shape %s\n", other.shapeString().c_str());
-    Matrix<T> broadCasted;
-    auto data1 = this->data;
-    auto data2 = other.data;
-    printf("test \n");
-    if (this->getTotalSize() > other.getTotalSize())
-    {
-        // need to broad cast other to this
-        broadCasted = other._broadcastTo(this->shape());
-        data2 = broadCasted.data;
-    }
-    else
-    {
-        // this to other
-        broadCasted = this->_broadcastTo(other.shape());
-        data1 = broadCasted.data;
-    }
+    std::vector<size_t> broadcastedShape;
+    auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
+    size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
+    printf("dimshape broadcastedDim1 = %d broadcastedDim2   =%d broadcastedDim3 = %d\n", broadcastedDim1,broadcastedDim2,broadcastedDim3);
+    printf("dimshape broadcastedDim1 = %d broadcastedDim2   =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
+    size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim2;
+    // printf("\n");
+    // printf("data1\n");
+    // for (int i = 0; i < broadcastedTotalSize; i++)
+    // {
+    //     printf("%.1f, ", data1[i]);
+    // }
+    // printf("data2\n");
+    // for (int i = 0; i < broadcastedTotalSize; i++)
+    // {
+    //     printf("%.1f, ", data2[i]);
+    // }
 
-    printf("\n");
-    printf("broadCastedOther\n");
-    for (int i = 0; i < broadCasted.getTotalSize(); i++)
-    {
-        printf("%.1f, ", broadCasted(i));
-    }
-    Matrix<T> result(broadCasted.shapeD1(), broadCasted.shapeD2(), broadCasted.shapeD3(), false);
     if (dataPlace == HOST)
     {
-        for (size_t i = 0; i < broadCasted.getTotalSize(); ++i)
+        Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, false);
+        for (size_t i = 0; i < broadcastedTotalSize; ++i)
         {
             // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
             result.data[i] = data1[i] + data2[i];
         }
+        return result;
     }
     else
     {
-        result.transferToDevice();
+        Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, true);
         size_t blockSize = TILE_SIZE * TILE_SIZE;
-        size_t numBlocks = ceil(float(totalSize) / blockSize);
+        size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
         matAdd<<<numBlocks, blockSize>>>(blockSize, data, other.data, result.data);
         cudaDeviceSynchronize();
+        printf("out kernel\n");
+        return result;
     }
-    return result;
 }
 
 // Copy assignment operator
@@ -517,9 +573,11 @@ Matrix<T> &Matrix<T>::operator=(Matrix<T> &&other) noexcept
     {
         // printf("old memory %f, other memory %f\n", data[0], other.data[0]);
         freeMemory();
+        printf("in move = broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", dim1,dim2,dim3);
         dim1 = other.dim1;
         dim2 = other.dim2;
         dim3 = other.dim3;
+        printf("in move = after copy broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", dim1,dim2,dim3);
         totalSize = other.totalSize;
         data = other.data;
         dataPlace = other.dataPlace;
@@ -546,6 +604,31 @@ __global__ void matAdd(int mat_sz, const T *A, const T b, T *C)
     if (i < mat_sz)
     {
         C[i] = b + A[i];
+    }
+}
+
+template <typename T>
+__global__ void broadcastKernel(const T *src, T *dst, size_t dim1, size_t dim2, size_t dim3, size_t new_dim1, size_t new_dim2, size_t new_dim3)
+{
+    size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    size_t j = blockIdx.y * blockDim.y + threadIdx.y;
+    size_t k = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if (i < new_dim1 && j < new_dim2 && k < new_dim3)
+    {
+        // Determine the source indices considering broadcasting rules
+        // For example, if dim1 = 1 and new_dim1 = 3,
+        // the value from the original matrix at src_i = 0
+        // should be used for all i in the destination matrix.
+        size_t src_i = dim1 == 1 ? 0 : i;
+        size_t src_j = dim2 == 1 ? 0 : j;
+        size_t src_k = dim3 == 1 ? 0 : k;
+
+        // Calculate the flattened index for the destination and source
+        size_t dst_index = k * new_dim1 * new_dim2 + j * new_dim1 + i;
+        size_t src_index = src_k * dim1 * dim2 + src_j * dim1 + src_i;
+
+        dst[dst_index] = src[src_index];
     }
 }
 
