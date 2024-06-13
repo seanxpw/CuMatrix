@@ -3,7 +3,8 @@
 
 int main()
 {
-    bool GPU = true;
+    const bool GPU = true;
+    const bool CPU = false;
     Matrix<float> matrix3D(40, 40, 4, GPU);
     Matrix<float> matrix1 = ones<float>(32, 32, 1, GPU);
     Matrix<float> matrix2 = ones<float>(32, 1, 1, GPU);
