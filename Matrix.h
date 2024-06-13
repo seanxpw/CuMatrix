@@ -2,6 +2,7 @@
 #define MATRIX_H
 
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <string>
 #include <stdexcept>
@@ -110,6 +111,47 @@ public:
     friend Matrix<T> operator+(const T &scalar, const Matrix<T> &matrix)
     {
         return matrix + scalar;
+    }
+    friend std::ostream &operator<<(std::ostream &os, const Matrix<T> &matrix)
+    {
+        os << "Matrix(" << matrix.dim1 << "x" << matrix.dim2 << "x" << matrix.dim3 << "):\n";
+        const size_t maxDisplay = 3; // Max elements to display at beginning and end of each dimension
+        for (size_t k = 0; k < matrix.dim3; ++k)
+        {
+            if (matrix.dim3 > 1)
+            {
+                os << "Slice " << k << ":\n";
+            }
+            for (size_t i = 0; i < matrix.dim1; ++i)
+            {
+                if (i >= maxDisplay && i < matrix.dim1 - maxDisplay)
+                {
+                    if (i == maxDisplay)
+                    {
+                        os << "  ...\n";
+                    }
+                    continue;
+                }
+                for (size_t j = 0; j < matrix.dim2; ++j)
+                {
+                    if (j >= maxDisplay && j < matrix.dim2 - maxDisplay)
+                    {
+                        if (j == maxDisplay)
+                        {
+                            os << " ... ";
+                        }
+                        continue;
+                    }
+                    os << std::setw(10) << matrix(i, j, k) << " ";
+                }
+                os << "\n";
+            }
+            if (matrix.dim3 > 1)
+            {
+                os << "\n";
+            }
+        }
+        return os;
     }
 };
 
@@ -417,7 +459,6 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
         cudaDeviceSynchronize();
         return result;
     }
-
 }
 
 // broadcast m1 or m2 to keep them the same dimension
@@ -494,7 +535,6 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
     size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim3;
 
-
     if (dataPlace == HOST)
     {
         Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, false);
@@ -518,7 +558,7 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
         Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, true);
         size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
-        matAdd<<<numBlocks, blockSize>>>(totalSize, data1, data2, result.data);
+        matAdd<<<numBlocks, blockSize>>>(broadcastedTotalSize, data1, data2, result.data);
         cudaDeviceSynchronize();
         if (this->getTotalSize() > other.getTotalSize())
         {
@@ -593,7 +633,7 @@ Matrix<T> Matrix<T>::operator*(const Matrix<T> &other) const
         Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, true);
         size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
-        matElementMul<<<numBlocks, blockSize>>>(totalSize, data1, data2, result.data);
+        matElementMul<<<numBlocks, blockSize>>>(broadcastedTotalSize, data1, data2, result.data);
         cudaDeviceSynchronize();
         if (this->getTotalSize() > other.getTotalSize())
         {
@@ -643,8 +683,8 @@ Matrix<T> Matrix<T>::dot(const Matrix<T> &other) const
         Matrix<T> result(dim1, other.dim3, 1, true);
         ::dim3 blockDim(TILE_SIZE, TILE_SIZE, 1);
         ::dim3 gridDim(
-            ( other.dim3+ blockDim.x - 1) / blockDim.x, // important here
-            ( dim1+ blockDim.y - 1) / blockDim.y,
+            (other.dim3 + blockDim.x - 1) / blockDim.x, // important here
+            (dim1 + blockDim.y - 1) / blockDim.y,
             (1 + blockDim.z - 1) / blockDim.z);
         matMul<<<gridDim, blockDim>>>(dim1, other.dim3, dim2, this->data, other.data, result.data);
         cudaDeviceSynchronize();

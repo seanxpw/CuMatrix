@@ -13,7 +13,7 @@ TARGET := a.out
 
 # Source files
 SRCS := 
-CU_SRCS := Matrix.cu
+CU_SRCS := example.cu
 
 # Object files
 OBJS := $(SRCS:.cpp=.o)
