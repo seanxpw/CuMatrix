@@ -399,6 +399,8 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
         );
         broadcastKernel<<<gridDim, blockDim>>>(this->data, result.data, dim1, dim2, dim3, new_dim1, new_dim2, new_dim3);
         cudaDeviceSynchronize();
+        printf(" out _broadcastTo\n");
+        return result;
     }
 
     // so what can be broadcasted?
@@ -449,7 +451,8 @@ std::pair<T *, T *> Matrix<T>::_broadcast(const Matrix<T> &m1, const Matrix<T> &
         printf(" Broadcast m1 to m2\n");
         broadCasted = m1._broadcastTo(m2.shape());
         broadcastedShape = broadCasted.shape();
-        printf("dimshape broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
+        printf("after get shape from_broadcastTo \n\
+        broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
         auto result = std::make_pair(broadCasted.data, m2.data);
         broadCasted.data = nullptr;
         printf(" finish Broadcast m1 to m2\n");
@@ -494,19 +497,23 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
     std::vector<size_t> broadcastedShape;
     auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
-    printf("dimshape broadcastedDim1 = %d broadcastedDim2   =%d broadcastedDim3 = %d\n", broadcastedDim1,broadcastedDim2,broadcastedDim3);
-    printf("dimshape broadcastedDim1 = %d broadcastedDim2   =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
     size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim2;
     // printf("\n");
     // printf("data1\n");
+    // float* d1,*d2;
+    // d1 = (float*)malloc(sizeof(float)*broadcastedTotalSize);
+    // d2 = (float*)malloc(sizeof(float)*broadcastedTotalSize);
+    // cudaMemcpy(d1, data1, sizeof(float)*broadcastedTotalSize,cudaMemcpyDeviceToHost);
+    // cudaMemcpy(d2, data2, sizeof(float)*broadcastedTotalSize,cudaMemcpyDeviceToHost);
+    // printf("finish copy\n");
     // for (int i = 0; i < broadcastedTotalSize; i++)
     // {
-    //     printf("%.1f, ", data1[i]);
+    //     printf("%.1f, ", d1[i]);
     // }
     // printf("data2\n");
     // for (int i = 0; i < broadcastedTotalSize; i++)
     // {
-    //     printf("%.1f, ", data2[i]);
+    //     printf("%.1f, ", d2[i]);
     // }
 
     if (dataPlace == HOST)
@@ -524,7 +531,7 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
         Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, true);
         size_t blockSize = TILE_SIZE * TILE_SIZE;
         size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
-        matAdd<<<numBlocks, blockSize>>>(blockSize, data, other.data, result.data);
+        matAdd<<<numBlocks, blockSize>>>(blockSize, data1, data2, result.data);
         cudaDeviceSynchronize();
         printf("out kernel\n");
         return result;
