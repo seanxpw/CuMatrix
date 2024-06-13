@@ -448,14 +448,14 @@ std::pair<T *, T *> Matrix<T>::_broadcast(const Matrix<T> &m1, const Matrix<T> &
     else
     {
         // Broadcast m1 to m2
-        printf(" Broadcast m1 to m2\n");
+        // printf(" Broadcast m1 to m2\n");
         broadCasted = m1._broadcastTo(m2.shape());
         broadcastedShape = broadCasted.shape();
-        printf("after get shape from_broadcastTo \n\
+        // printf("after get shape from_broadcastTo \n\
         broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
         auto result = std::make_pair(broadCasted.data, m2.data);
         broadCasted.data = nullptr;
-        printf(" finish Broadcast m1 to m2\n");
+        // printf(" finish Broadcast m1 to m2\n");
         return result;
     }
 }
@@ -492,29 +492,12 @@ Matrix<T> Matrix<T>::operator+(const T &num) const
 template <typename T>
 Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
 {
-    printf("this shape %s\n", this->shapeString().c_str());
-    printf("other shape %s\n", other.shapeString().c_str());
+    // printf("this shape %s\n", this->shapeString().c_str());
+    // printf("other shape %s\n", other.shapeString().c_str());
     std::vector<size_t> broadcastedShape;
     auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
     size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim2;
-    // printf("\n");
-    // printf("data1\n");
-    // float* d1,*d2;
-    // d1 = (float*)malloc(sizeof(float)*broadcastedTotalSize);
-    // d2 = (float*)malloc(sizeof(float)*broadcastedTotalSize);
-    // cudaMemcpy(d1, data1, sizeof(float)*broadcastedTotalSize,cudaMemcpyDeviceToHost);
-    // cudaMemcpy(d2, data2, sizeof(float)*broadcastedTotalSize,cudaMemcpyDeviceToHost);
-    // printf("finish copy\n");
-    // for (int i = 0; i < broadcastedTotalSize; i++)
-    // {
-    //     printf("%.1f, ", d1[i]);
-    // }
-    // printf("data2\n");
-    // for (int i = 0; i < broadcastedTotalSize; i++)
-    // {
-    //     printf("%.1f, ", d2[i]);
-    // }
 
     if (dataPlace == HOST)
     {
@@ -524,6 +507,8 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
             // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
             result.data[i] = data1[i] + data2[i];
         }
+        delete []data1;
+        delete []data2;
         return result;
     }
     else
@@ -533,7 +518,9 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
         size_t numBlocks = ceil(float(broadcastedTotalSize) / blockSize);
         matAdd<<<numBlocks, blockSize>>>(blockSize, data1, data2, result.data);
         cudaDeviceSynchronize();
-        printf("out kernel\n");
+        // printf("out kernel\n");
+        cudaFree(data1);
+        cudaFree(data2);
         return result;
     }
 }
@@ -548,8 +535,8 @@ Matrix<T> &Matrix<T>::operator=(const Matrix<T> &other)
     printf("out copy operator =\n");
     if (this != &other)
     {
-        printf("in operator =\n");
-        printf("old memory %f, other memory %f", data[0], other.data[0]);
+        // printf("in operator =\n");
+        // printf("old memory %f, other memory %f", data[0], other.data[0]);
         freeMemory();
         this->dim1 = other.dim1;
         dim2 = other.dim2;
@@ -580,11 +567,11 @@ Matrix<T> &Matrix<T>::operator=(Matrix<T> &&other) noexcept
     {
         // printf("old memory %f, other memory %f\n", data[0], other.data[0]);
         freeMemory();
-        printf("in move = broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", dim1,dim2,dim3);
+        // printf("in move = broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", dim1,dim2,dim3);
         dim1 = other.dim1;
         dim2 = other.dim2;
         dim3 = other.dim3;
-        printf("in move = after copy broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", dim1,dim2,dim3);
+        // printf("in move = after copy broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", dim1,dim2,dim3);
         totalSize = other.totalSize;
         data = other.data;
         dataPlace = other.dataPlace;
