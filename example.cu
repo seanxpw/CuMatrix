@@ -25,7 +25,6 @@ int main()
     // assign values only works on host (CPU)
     matrix1.transferToHost();
     matrix1(0) = 50.0f;
-    matrix1(0, 2, 1) = 50.0f;
 
     // print a matrix, must in host to print
     std::cout << matrix1;
