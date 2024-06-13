@@ -97,6 +97,14 @@ public:
 
     Matrix<T> &operator=(const Matrix<T> &other);     // Copy assignment
     Matrix<T> &operator=(Matrix<T> &&other) noexcept; // Move assignment
+    friend Matrix<T> operator*(const T &scalar, const Matrix<T> &matrix)
+    {
+        return matrix * scalar;
+    }
+    friend Matrix<T> operator+(const T &scalar, const Matrix<T> &matrix)
+    {
+        return matrix + scalar;
+    }
 };
 
 // Constructor Definitions
@@ -436,6 +444,7 @@ Matrix<T> Matrix<T>::_broadcastTo(const std::vector<size_t> &otherShapes) const
 template <typename T>
 std::pair<T *, T *> Matrix<T>::_broadcast(const Matrix<T> &m1, const Matrix<T> &m2, std::vector<size_t> &broadcastedShape) const
 {
+    printf("in _bc\n");
     if (m1.getTotalSize() == m2.getTotalSize())
     {
         // No need to broadcast, return the original pointers
@@ -457,10 +466,10 @@ std::pair<T *, T *> Matrix<T>::_broadcast(const Matrix<T> &m1, const Matrix<T> &
     else
     {
         // Broadcast m1 to m2
-        // printf(" Broadcast m1 to m2\n");
+        printf(" Broadcast m1 to m2\n");
         broadCasted = m1._broadcastTo(m2.shape());
         broadcastedShape = broadCasted.shape();
-        // printf("after get shape from_broadcastTo \n\
+        printf("after get shape from_broadcastTo \n\
         broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
         auto result = std::make_pair(broadCasted.data, m2.data);
         broadCasted.data = nullptr;
@@ -511,7 +520,8 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
     std::vector<size_t> broadcastedShape;
     auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
-    size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim2;
+    size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim3;
+    printf("broadcastedTotalSize = %ld\n",broadcastedTotalSize);
 
     if (dataPlace == HOST)
     {
@@ -589,14 +599,14 @@ Matrix<T> Matrix<T>::operator*(const Matrix<T> &other) const
     std::vector<size_t> broadcastedShape;
     auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
-    size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim2;
+    size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim3;
 
     if (dataPlace == HOST)
     {
         Matrix<T> result(broadcastedDim1, broadcastedDim2, broadcastedDim3, false);
         for (size_t i = 0; i < broadcastedTotalSize; ++i)
         {
-            // printf(" data = %f, other data = %f\n", data[i], other.data[i]);
+            printf(" data = %f, other data = %f\n", data[i], other.data[i]);
             result.data[i] = data1[i] * data2[i];
         }
         if (this->getTotalSize() > other.getTotalSize())
@@ -805,5 +815,16 @@ Matrix<T> ones(size_t d1, size_t d2, size_t d3, bool isOnDevice = true)
     result.matrixMemset(1);
     return result;
 }
+
+template <typename T>
+Matrix<T> operator*(const T &scalar, const Matrix<T> &matrix)
+{
+    return matrix * scalar; // Use the member function defined in the Matrix class
+}
+template <typename T>
+Matrix<T>operator+(const T &scalar, const Matrix<T> &matrix)
+    {
+        return matrix + scalar;
+    }
 
 #endif
