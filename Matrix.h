@@ -115,23 +115,46 @@ public:
     friend std::ostream &operator<<(std::ostream &os, const Matrix<T> &matrix)
     {
         os << "Matrix(" << matrix.dim1 << "x" << matrix.dim2 << "x" << matrix.dim3 << "):\n";
-        const size_t maxDisplay = 3; // Max elements to display at beginning and end of each dimension
+        const size_t maxDisplay = 2; // Max elements to display at beginning and end of each dimension
+
+        auto should_skip = [&](size_t index, size_t dim)
+        {
+            return index >= maxDisplay && index < dim - maxDisplay;
+        };
+
+        auto print_with_ellipsis = [&](size_t current, size_t total, size_t max_display)
+        {
+            if (should_skip(current, total))
+            {
+                if (current == max_display)
+                {
+                    os << "  ...\n";
+                }
+                return true;
+            }
+            return false;
+        };
+
         for (size_t k = 0; k < matrix.dim3; ++k)
         {
-            if (matrix.dim3 > 1)
+            if (matrix.dim3 > 1 && !should_skip(k, matrix.dim3))
             {
                 os << "Slice " << k << ":\n";
             }
+            else if (should_skip(k, matrix.dim3))
+            {
+                if (k == maxDisplay)
+                {
+                    os << "  ...\n";
+                }
+                continue;
+            }
+
             for (size_t i = 0; i < matrix.dim1; ++i)
             {
-                if (i >= maxDisplay && i < matrix.dim1 - maxDisplay)
-                {
-                    if (i == maxDisplay)
-                    {
-                        os << "  ...\n";
-                    }
+                if (print_with_ellipsis(i, matrix.dim1, maxDisplay))
                     continue;
-                }
+
                 for (size_t j = 0; j < matrix.dim2; ++j)
                 {
                     if (j >= maxDisplay && j < matrix.dim2 - maxDisplay)
@@ -146,7 +169,7 @@ public:
                 }
                 os << "\n";
             }
-            if (matrix.dim3 > 1)
+            if (matrix.dim3 > 1 && !should_skip(k, matrix.dim3))
             {
                 os << "\n";
             }
