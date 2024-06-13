@@ -34,6 +34,9 @@ template <typename T>
 __global__ void matElementMul(int mat_sz, const T *A, const T *B, T *C);
 
 template <typename T>
+__global__ void matMul(int m, int n, int k, const T *A, const T *B, T *C);
+
+template <typename T>
 class Matrix
 {
 private:
@@ -95,8 +98,11 @@ public:
     Matrix<T> operator*(const T &num) const;
     Matrix<T> operator*(const Matrix<T> &other) const;
 
+    Matrix<T> dot(const Matrix<T> &other) const;
+
     Matrix<T> &operator=(const Matrix<T> &other);     // Copy assignment
     Matrix<T> &operator=(Matrix<T> &&other) noexcept; // Move assignment
+
     friend Matrix<T> operator*(const T &scalar, const Matrix<T> &matrix)
     {
         return matrix * scalar;
@@ -470,7 +476,8 @@ std::pair<T *, T *> Matrix<T>::_broadcast(const Matrix<T> &m1, const Matrix<T> &
         broadCasted = m1._broadcastTo(m2.shape());
         broadcastedShape = broadCasted.shape();
         printf("after get shape from_broadcastTo \n\
-        broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n", broadcastedShape[0],broadcastedShape[1],broadcastedShape[2]);
+        broadcastedDim1 = %d broadcastedDim2 =%d broadcastedDim3 = %d\n",
+               broadcastedShape[0], broadcastedShape[1], broadcastedShape[2]);
         auto result = std::make_pair(broadCasted.data, m2.data);
         broadCasted.data = nullptr;
         // printf(" finish Broadcast m1 to m2\n");
@@ -521,7 +528,7 @@ Matrix<T> Matrix<T>::operator+(const Matrix<T> &other) const
     auto [data1, data2] = this->_broadcast(*this, other, broadcastedShape);
     size_t broadcastedDim1 = broadcastedShape[0], broadcastedDim2 = broadcastedShape[1], broadcastedDim3 = broadcastedShape[2];
     size_t broadcastedTotalSize = broadcastedDim1 * broadcastedDim2 * broadcastedDim3;
-    printf("broadcastedTotalSize = %ld\n",broadcastedTotalSize);
+    printf("broadcastedTotalSize = %ld\n", broadcastedTotalSize);
 
     if (dataPlace == HOST)
     {
@@ -640,6 +647,51 @@ Matrix<T> Matrix<T>::operator*(const Matrix<T> &other) const
     }
 }
 
+template <typename T>
+Matrix<T> Matrix<T>::dot(const Matrix<T> &other) const
+{
+    // check dimsions
+    if (this->dim3 != 1 || other.dim3 != 1)
+    {
+        printf("Error: only support 2d matrix for now (dim3 needs to be 1)");
+        exit(1);
+    }
+    if (this->dim2 != other.dim1)
+    {
+        printf("Error: try to do %s dot %s, invalid", this->shapeString().c_str(), other.shapeString().c_str());
+        exit(1);
+    }
+    if (this->dataPlace == HOST)
+    {
+        Matrix<T> result(dim1, other.dim3, 1, false);
+        for (size_t i = 0; i < this->dim1; ++i)
+        {
+            for (size_t j = 0; j < other.dim2; ++j)
+            {
+                T sum = 0;
+                for (size_t k = 0; k < this->dim2; ++k)
+                {
+                    sum += (*this)(i, k, 0) * other(k, j, 0);
+                }
+                result(i, j, 0) = sum;
+            }
+        }
+        return result;
+    }
+    else
+    {
+        Matrix<T> result(dim1, other.dim3, 1, true);
+        ::dim3 blockDim(TILE_SIZE, TILE_SIZE, 1);
+        ::dim3 gridDim(
+            ( other.dim3+ blockDim.x - 1) / blockDim.x,
+            ( dim1+ blockDim.y - 1) / blockDim.y,
+            (1 + blockDim.z - 1) / blockDim.z);
+        matMul<<<gridDim, blockDim>>>(dim1, other.dim3, dim2, this->data, other.data, result.data);
+        cudaDeviceSynchronize();
+        return result;
+    }
+}
+
 // Copy assignment operator
 // Matrix<float> matrix3D(4, 4, 1, false);
 // Matrix<float> matrix2(4, 4, 1, false);
@@ -735,6 +787,111 @@ __global__ void matElementMul(int mat_sz, const T *A, const T b, T *C)
     }
 }
 
+// C=A dot B
+// template <typename T>
+// __global__ void matMul(int m, int n, int k, const T *A, const T *B, T *C)
+// {
+
+//     const unsigned int shared_size = TILE_SIZE * TILE_SIZE;
+//     __shared__ float tile_A[shared_size];
+//     __shared__ float tile_B[shared_size];
+//     float value = 0.0f;
+//     unsigned int tx = threadIdx.x;
+//     unsigned int ty = threadIdx.y;
+//     unsigned int bx = blockIdx.x;
+//     unsigned int by = blockIdx.y;
+
+//     unsigned int Row = by * blockDim.y + ty;
+//     unsigned int Col = bx * blockDim.x + tx;
+//     // initialize tile_C to all zero
+
+//     for (int i = 0; i < (k + TILE_SIZE - 1) / TILE_SIZE; i++)
+//     {
+//         // copy one tile to tile_A and tile_B
+//         unsigned int index_a = Row * k + i * blockDim.x + tx;
+//         unsigned int index_b = (i * blockDim.x + ty) * n + Col;
+//         if (Row < m && i * TILE_SIZE + tx < k)
+//         {
+//             tile_A[ty * blockDim.x + tx] = A[index_a];
+//         }
+//         else
+//         {
+//             tile_A[ty * blockDim.x + tx] = 0.0f;
+//         }
+//         if (Col < n && i * TILE_SIZE + ty < k)
+//         {
+//             tile_B[ty * blockDim.x + tx] = B[index_b];
+//         }
+//         else
+//         {
+//             tile_B[ty * blockDim.x + tx] = 0;
+//         }
+//         __syncthreads();
+//         // multiply and then add the result back to tile_C
+//         for (int j = 0; j < blockDim.x; j++)
+//         {
+//             value += tile_A[ty * blockDim.x + j] * tile_B[tx + j * blockDim.y];
+//         }
+//         __syncthreads();
+//     }
+//     // write back to C where C is a (m x n) matrix
+//     unsigned int c_row = by * blockDim.y + ty;
+//     unsigned int c_col = bx * blockDim.x + tx;
+//     if (c_col < n && c_row < m)
+//     {
+//         C[c_row * n + c_col] = value;
+//     }
+// }
+
+template <typename T>
+__global__ void matMul(int m, int n, int k, const T *A, const T *B, T *C)
+{
+
+    __shared__ float tile_A[TILE_SIZE][TILE_SIZE];
+    __shared__ float tile_B[TILE_SIZE][TILE_SIZE];
+
+    unsigned int tx = threadIdx.x;
+    unsigned int ty = threadIdx.y;
+    unsigned int Row = blockIdx.y * TILE_SIZE + ty;
+    unsigned int Col = blockIdx.x * TILE_SIZE + tx;
+
+    float value = 0.0f;
+
+    for (int t = 0; t < (k + TILE_SIZE - 1) / TILE_SIZE; ++t)
+    {
+        // Collaborative loading of A and B tiles into shared memory
+        if (Row < m && t * TILE_SIZE + tx < k)
+        {
+            tile_A[ty][tx] = A[Row * k + t * TILE_SIZE + tx];
+        }
+        else
+        {
+            tile_A[ty][tx] = 0.0f;
+        }
+        if (t * TILE_SIZE + ty < k && Col < n)
+        {
+            tile_B[ty][tx] = B[(t * TILE_SIZE + ty) * n + Col];
+        }
+        else
+        {
+            tile_B[ty][tx] = 0.0f;
+        }
+        __syncthreads();
+
+        // Multiply the tiles
+        for (int i = 0; i < TILE_SIZE; ++i)
+        {
+            value += tile_A[ty][i] * tile_B[i][tx];
+        }
+        __syncthreads();
+    }
+
+    // Write the result to the output matrix C
+    if (Row < m && Col < n)
+    {
+        C[Row * n + Col] = value;
+    }
+}
 template <typename T>
 __global__ void broadcastKernel(const T *src, T *dst, size_t dim1, size_t dim2, size_t dim3, size_t new_dim1, size_t new_dim2, size_t new_dim3)
 {
@@ -822,9 +979,9 @@ Matrix<T> operator*(const T &scalar, const Matrix<T> &matrix)
     return matrix * scalar; // Use the member function defined in the Matrix class
 }
 template <typename T>
-Matrix<T>operator+(const T &scalar, const Matrix<T> &matrix)
-    {
-        return matrix + scalar;
-    }
+Matrix<T> operator+(const T &scalar, const Matrix<T> &matrix)
+{
+    return matrix + scalar;
+}
 
 #endif
